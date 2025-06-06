@@ -2,23 +2,91 @@ import numpy as np
 from random import randint
 import os
 from itertools import permutations
+import time
 
 
 def main():
-    # load file into string
-    if os.path.exists("sudoku.csv"):
-        with open("sudoku.csv") as file:
-            content = file.readlines()
-            # TODO: make random once done with testing
-            puzzle_index = content[6]
-            puzzle_str = puzzle_index.split(',')[0]
-            solution_str = puzzle_index.split(',')[1]
-            solution_str = solution_str.split('\n')[0]
+    # get input mode
+    print("Please choose mode from:")
+    print(" - Solve a randomly generated puzzle (1)")
+    print(" - Input your own puzzle (2)")
+    print(" - Test the average solve speed (3)")
+    mode = input(' ')
+    if mode == '1':
+        # load file into string
+        t0 = time.time()
+        if os.path.exists("sudoku.csv"):
+            with open("sudoku.csv") as file:
+                content = file.readlines()
+                puzzle_index = content[randint(1, 1000000)]
+                puzzle_str = puzzle_index.split(',')[0]
+                solution_str = puzzle_index.split(',')[1]
+                solution_str = solution_str.split('\n')[0]
+        else:
+            print("Couldn't find sudoku files")
+            return
+        load_time = time.time() - t0
+        solve_puzzle(load_time, puzzle_str, solution_str, int(mode))
+    
+    elif mode == '2':
+        # get user to input string
+        print("Please input your board left to right, top to bottom, one number after another:")
+        puzzle_str = str(input(''))
+        horizontal = [[(9 * j) + i for i in range(9)] for j in range(9)]
+        vertical = [[(9 * i) + j for i in range(9)] for j in range(9)] 
+        boxes = [[(9 * j) + (3 * k) + (27 * l) + i for j in range(3) for i in range(3)] for l in range(3) for k in range(3)]  
+        lines = [horizontal, vertical, boxes] 
+        # check for valid string composition
+        if len(puzzle_str) != 81:
+            print("Please enter a puzzle of a valid length.")
+            return
+        if not puzzle_str.isdigit():
+            print("Puzzle most only include numbers.")
+            return
+        if not check_arrangement(puzzle_str, lines):
+            print("Please enter a valid board state.")
+            return
+        solve_puzzle(0, puzzle_str, None, int(mode))
 
+    elif mode == '3':
+        # load file into string
+        t0 = time.time()
+        if os.path.exists("sudoku.csv"):
+            with open("sudoku.csv") as file:
+                content = file.readlines()
+                puzzle_index_list = [content[randint(1, 1000000)] for i in range(100)]
+                puzzle_str_list = [puzzle_index.split(',')[0] for puzzle_index in puzzle_index_list]
+                solution_str_list = [puzzle_index.split(',')[1] for puzzle_index in puzzle_index_list]
+                solution_str_list = [solution_str.split('\n')[0] for solution_str in solution_str_list]
+        else:
+            print("Couldn't find sudoku files")
+            return
+        load_time = time.time() - t0
+        total_time = 0
+        for i in range(100):
+            correct, solve_time = solve_puzzle(0, puzzle_str_list[i], solution_str_list[i], int(mode))
+            total_time += solve_time
+            if not correct:
+                print(f"Error: puzzle {i} solved incorrectly")
+                return
+        print("Solved 100 puzzles correctly.")
+        print("Time to load puzzles:", round(1000 * load_time), "ms")
+        print("Average time to solve each puzzle:", round(1000 * (total_time / 100)), "ms")
+    
     else:
-        print("Couldn't find sudoku files")
+        print("Please enter a valid mode (1, 2, 3).")
         return
 
+            
+
+
+        
+
+
+
+
+def solve_puzzle(load_time, puzzle_str, solution_str, mode):
+    t1 = time.time()
     # all the possible addition lines in the puzzle
     # horizontal lines (x9), vertical lines (x9), boxes
     horizontal = [[(9 * j) + i for i in range(9)] for j in range(9)]
@@ -29,8 +97,9 @@ def main():
     # loop until finished puzzle
     offset = 0
     count = 0
-    print("Initial board state:")
-    print_board(puzzle_str)
+    if mode != 3:
+        print("Initial board state:")
+        print_board(puzzle_str)
     while True:
         # find the first line/box with the least number of gaps
         least_gappy_lines = find_least_gaps(puzzle_str, lines, offset)
@@ -50,14 +119,17 @@ def main():
             # if only one arrangement allowed, add it to the puzzle
             if len(remaining_puzzles) == 1:
                 puzzle_str = remaining_puzzles[0]
-                print(f"Single valid line found; completing line {line}:")
+                if mode != 3:
+                    print(f"Single valid line found; completing line {line}:")
                 board_updates += 1
             else:
                 # check which of the numbers are constant throughout all valid puzzles, and put into puzzle_str
                 new_puzzle_str, update_count = update_board_partially(puzzle_str, remaining_puzzles, lines, line, missing_numbers)
                 if new_puzzle_str != puzzle_str:
                     puzzle_str = new_puzzle_str
-                    print(f"Partially valid line found; updating line {line} with {update_count} numbers")
+                    if mode != 3:
+                        print(f"Partially valid line found; updating line {line} with {update_count} numbers")
+                    board_updates += 1
 
                     
         # no lines left in least_gappy_lines, or no definitive solutions for the lines left, or puzzle is solved
@@ -71,21 +143,34 @@ def main():
             
         # check if puzzle has been solved
         if puzzle_solved(puzzle_str):
-            print("SOLUTION FOUND!")
-            print("Iterations taken:", count)
-            print_board(puzzle_str)
-            check_answer(puzzle_str, solution_str)
-            break
+            t2 = time.time()
+            if mode != 3:
+                print("SOLUTION FOUND!")
+                print("Iterations taken:", count)
+                if load_time != 0:
+                    print("Time to load puzzle:", round(1000 * (load_time)), "ms")
+                print("Time to solve puzzle:", round(1000 * (t2-t1)), "ms")
+                print_board(puzzle_str)
+                check_answer(puzzle_str, solution_str)
+                return True, 0
+            else:
+                correct = False
+                if puzzle_str == solution_str:
+                    correct = True
+                solve_time = t2 - t1
+                return correct, solve_time
+            
         
-        print("Iteration =", count)
-        print("Board updates this iteration =", board_updates)
-        print("Board at end of iteration:")
-        print_board(puzzle_str)
+        if mode != 3:
+            print("Iteration =", count)
+            print("Board updates this iteration =", board_updates)
+            print("Board at end of iteration:")
+            print_board(puzzle_str)
 
-        if count == 15:
+        if count == 30:
             print("Unable to complete the solve. Current board state:")
             print_board(puzzle_str)
-            break
+            return False, 0
 
    
     
@@ -212,11 +297,13 @@ def update_board_partially(puzzle_str, remaining_puzzles, lines, line, missing_n
 
 
 def check_answer(puzzle, solution):
-    if puzzle == solution:
+    if solution == None:
+        pass
+    elif puzzle == solution:
         print("Puzzle solved correctly")
+        print('')
     else:
-        print("Error found in solution; correct solution was:")
-        print(solution)
+        print("Error found in answer; correct solution was:")
         print_board(solution)
 
 
